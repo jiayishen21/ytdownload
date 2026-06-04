@@ -1,6 +1,7 @@
 import os
 import re
 import shutil
+import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -27,26 +28,39 @@ def _sanitize_filename(title: str) -> str:
     return sanitized[:200] or "untitled"
 
 
+def _ffmpeg_binary_name() -> str:
+    return "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
+
+
 def _find_ffmpeg_dir() -> str | None:
+    """Locate the directory containing ffmpeg (PATH, FFMPEG_LOCATION, or Windows fallbacks)."""
+    env_location = os.environ.get("FFMPEG_LOCATION")
+    if env_location:
+        path = Path(env_location)
+        if path.is_dir() and (path / _ffmpeg_binary_name()).exists():
+            return str(path)
+        if path.is_file():
+            return str(path.parent)
+
     on_path = shutil.which("ffmpeg")
     if on_path:
         return str(Path(on_path).parent)
 
-    search_roots = [
-        Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages",
-        Path(os.environ.get("ProgramFiles", "")),
-        Path(os.environ.get("ProgramFiles(x86)", "")),
-        Path("C:/ffmpeg"),
-    ]
-
-    for root in search_roots:
-        if not root or not root.exists():
-            continue
-        try:
-            for ffmpeg in root.rglob("ffmpeg.exe"):
-                return str(ffmpeg.parent)
-        except OSError:
-            continue
+    if sys.platform == "win32":
+        search_roots = [
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WinGet" / "Packages",
+            Path(os.environ.get("ProgramFiles", "")),
+            Path(os.environ.get("ProgramFiles(x86)", "")),
+            Path("C:/ffmpeg"),
+        ]
+        for root in search_roots:
+            if not root or not root.exists():
+                continue
+            try:
+                for ffmpeg in root.rglob("ffmpeg.exe"):
+                    return str(ffmpeg.parent)
+            except OSError:
+                continue
 
     return None
 
@@ -97,8 +111,8 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
     ffmpeg_dir = _find_ffmpeg_dir()
     if not ffmpeg_dir:
         raise ConversionError(
-            "ffmpeg not found. Install it (winget install Gyan.FFmpeg), "
-            "then restart your terminal so PATH updates."
+            "ffmpeg not found. Install ffmpeg and ensure it is on PATH, "
+            "or set FFMPEG_LOCATION to the directory containing the ffmpeg binary."
         )
 
     downloaded_at = datetime.now()

@@ -156,6 +156,8 @@ ytdownload/
 ├── run.py             # Dev server entry point
 ├── test.py            # Manual API test script
 ├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
 └── .flaskenv
 ```
 
@@ -173,3 +175,59 @@ ytdownload/
 - **Flask** — HTTP API
 - **yt-dlp** — YouTube metadata and downloads
 - **FFmpeg** (system) — audio extraction and video/audio merge
+- **gunicorn** — production HTTP server (used in Docker; optional locally)
+
+## Docker (Linux server / any host with Docker)
+
+The app is not tied to Windows for deployment. The only Windows-specific code is an **optional fallback** that searches common WinGet install paths if `ffmpeg` is not on `PATH`. In Docker, FFmpeg is installed via `apt` and found automatically.
+
+### Quick start
+
+```bash
+docker compose up --build
+```
+
+API: **http://localhost:5000**
+
+Downloads are written to `./downloads` on the host (mounted volume).
+
+### Without Compose
+
+```bash
+docker build -t ytdownload .
+docker run --rm -p 5000:5000 -v "$(pwd)/downloads:/app/downloads" ytdownload
+```
+
+### How it works in the container
+
+| Piece | Role |
+|-------|------|
+| `python:3.12-slim-bookworm` | Linux base image |
+| `apt install ffmpeg` | FFmpeg + ffprobe on `PATH` |
+| `gunicorn` | Serves `run:app` on `0.0.0.0:5000` (not Flask’s dev server) |
+| Volume `./downloads:/app/downloads` | Persist converted files outside the container |
+
+Request timeout is **600 seconds** in gunicorn so long MP4 jobs can finish.
+
+### Deploying to a real server
+
+1. Install [Docker](https://docs.docker.com/engine/install/) on the VM (Ubuntu, etc.).
+2. Clone the repo, run `docker compose up -d --build`.
+3. Put a reverse proxy (nginx, Caddy) in front if you need HTTPS — do not expose this API directly to the internet without auth (see “Things to know”).
+4. Ensure the server has enough **disk space** and **bandwidth**; MP4 at “best” quality can be hundreds of MB per video.
+
+Override FFmpeg location if needed:
+
+```yaml
+environment:
+  - FFMPEG_LOCATION=/usr/bin
+```
+
+### Windows vs Linux summary
+
+| Concern | Local Windows | Docker / Linux server |
+|---------|---------------|------------------------|
+| FFmpeg | Install yourself or WinGet; app may auto-detect WinGet paths | Installed in image |
+| Dev server | `python run.py` | `docker compose up` |
+| Production | Use Docker + gunicorn, or install ffmpeg + gunicorn on the host | Recommended |
+| `test.py` | Run on host against `localhost:5000` | Same |

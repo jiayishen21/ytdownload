@@ -22,11 +22,7 @@
         border: 1px solid #ccc;
         border-radius: 4px;
       }
-      fieldset {
-        border: none;
-        padding: 0;
-        margin: 0 0 1rem;
-      }
+      fieldset { border: none; padding: 0; margin: 0 0 1rem; }
       fieldset label { font-weight: normal; display: inline; margin-right: 1rem; }
       button {
         padding: 0.5rem 1rem;
@@ -67,7 +63,7 @@
         <label><input type="radio" name="format" value="mp4" /> MP4</label>
       </fieldset>
 
-      <button type="submit" id="submit">Convert</button>
+      <button type="submit" id="submit">Download</button>
     </form>
 
     <div id="status" role="status"></div>
@@ -77,13 +73,23 @@
       const status = document.getElementById("status");
       const submit = document.getElementById("submit");
 
+      function filenameFromDisposition(header) {
+        if (!header) return "download.bin";
+        const star = /filename\*=UTF-8''([^;\s]+)/i.exec(header);
+        if (star) return decodeURIComponent(star[1]);
+        const plain = /filename="([^"]+)"/i.exec(header);
+        if (plain) return plain[1];
+        return "download.bin";
+      }
+
       form.addEventListener("submit", async (e) => {
         e.preventDefault();
         const url = document.getElementById("url").value.trim();
         const format = form.format.value;
 
         status.className = "visible pending";
-        status.textContent = "Converting one video only (playlist links are ignored). MP4 can take several minutes.";
+        status.textContent =
+          "Converting… your browser will download the file when ready.";
         submit.disabled = true;
 
         try {
@@ -92,17 +98,31 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ url, format }),
           });
-          const data = await res.json();
 
-          if (!res.ok) {
+          const contentType = res.headers.get("Content-Type") || "";
+
+          if (!res.ok || contentType.includes("application/json")) {
+            const data = await res.json();
             status.className = "visible err";
             status.textContent = data.error || "Request failed";
             return;
           }
 
+          const blob = await res.blob();
+          const filename = filenameFromDisposition(
+            res.headers.get("Content-Disposition")
+          );
+          const blobUrl = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = blobUrl;
+          link.download = filename;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          URL.revokeObjectURL(blobUrl);
+
           status.className = "visible ok";
-          status.textContent =
-            "Saved: " + data.filename + " (" + data.title + ")";
+          status.textContent = "Download started: " + filename;
         } catch (err) {
           status.className = "visible err";
           status.textContent = "Network error: " + err.message;

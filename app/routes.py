@@ -1,4 +1,6 @@
-from flask import Blueprint, jsonify, render_template, request
+import shutil
+
+from flask import Blueprint, after_this_request, jsonify, render_template, request, send_file
 
 from app.youtube import VALID_FORMATS, ConversionError, convert_url
 
@@ -29,13 +31,19 @@ def convert():
     except ConversionError as exc:
         return jsonify({"error": str(exc)}), 500
 
-    return jsonify(
-        {
-            "ok": True,
-            "video_id": result["video_id"],
-            "title": result["title"],
-            "format": result["format"],
-            "filename": result["filename"],
-            "path": result["path"],
-        }
+    tmpdir = result["tmpdir"]
+    file_path = result["path"]
+    filename = result["filename"]
+    mimetype = result["mimetype"]
+
+    @after_this_request
+    def _cleanup(response):
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        return response
+
+    return send_file(
+        file_path,
+        mimetype=mimetype,
+        as_attachment=True,
+        download_name=filename,
     )

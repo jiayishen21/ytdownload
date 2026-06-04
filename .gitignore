@@ -6,5 +6,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Generated media (created at runtime by the API)
+# Local test / legacy output (not used by the API by default)
+test_output/
 downloads/

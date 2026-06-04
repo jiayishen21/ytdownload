@@ -12,8 +12,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY app/ app/
 COPY run.py .
 
-RUN mkdir -p downloads
-
 EXPOSE 5000
 
 # Long timeout: MP4 downloads can take several minutes

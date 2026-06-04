@@ -10,13 +10,24 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import yt_dlp
 
-DOWNLOADS_DIR = Path(__file__).resolve().parent.parent / "downloads"
 Format = Literal["mp3", "mp4"]
 VALID_FORMATS: frozenset[str] = frozenset({"mp3", "mp4"})
+FORMAT_MIMETYPES: dict[str, str] = {
+    "mp3": "audio/mpeg",
+    "mp4": "video/mp4",
+}
 
 
 class ConversionError(Exception):
     pass
+
+
+def _dev_output_dir() -> Path | None:
+    """Optional dev-only directory (e.g. test_output). Set YTDOWNLOAD_DEV_OUTPUT_DIR."""
+    raw = os.environ.get("YTDOWNLOAD_DEV_OUTPUT_DIR", "").strip()
+    if not raw:
+        return None
+    return Path(raw).resolve()
 
 
 def _strip_ansi(text: str) -> str:
@@ -27,18 +38,6 @@ def _sanitize_filename(title: str) -> str:
     sanitized = re.sub(r'[<>:"/\\|?*]', "", title)
     sanitized = re.sub(r"\s+", " ", sanitized).strip()
     return sanitized[:200] or "untitled"
-
-
-def _ensure_downloads_dir() -> None:
-    path = DOWNLOADS_DIR
-    if path.exists():
-        if path.is_dir():
-            return
-        raise ConversionError(
-            f"{path} exists but is not a directory. "
-            "Delete that file or fix the Docker volume mount, then try again."
-        )
-    path.mkdir(parents=True, exist_ok=True)
 
 
 def _normalize_url(url: str) -> str:
@@ -143,7 +142,7 @@ def _video_info(info: dict[str, Any] | None) -> dict[str, Any]:
 
 
 def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
-    """Download from a YouTube URL and save as MP3 or MP4 under downloads/."""
+    """Download from a YouTube URL; return temp file metadata for browser download."""
     format_type = fmt.lower()
     if format_type not in VALID_FORMATS:
         raise ConversionError(f"format must be one of: {', '.join(sorted(VALID_FORMATS))}")
@@ -156,10 +155,10 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
         )
 
     clean_url = _normalize_url(url)
-    downloaded_at = datetime.now()
-    timestamp = downloaded_at.strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tmpdir = tempfile.mkdtemp()
 
-    with tempfile.TemporaryDirectory() as tmpdir:
+    try:
         opts = _ydl_opts(ffmpeg_dir, tmpdir, format_type)  # type: ignore[arg-type]
 
         try:
@@ -178,26 +177,33 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
                 f"{format_type.upper()} file was not created. ffmpeg dir: {ffmpeg_dir}"
             )
 
-        _ensure_downloads_dir()
         filename = f"{_sanitize_filename(title)}-{timestamp}.{format_type}"
-        dest_path = DOWNLOADS_DIR / filename
-
-        if dest_path.exists():
+        final_path = os.path.join(tmpdir, filename)
+        if os.path.exists(final_path):
             filename = (
                 f"{_sanitize_filename(title)}-{timestamp}-{video_id}.{format_type}"
             )
-            dest_path = DOWNLOADS_DIR / filename
+            final_path = os.path.join(tmpdir, filename)
 
-        shutil.move(temp_file, dest_path)
+        shutil.move(temp_file, final_path)
+
+        dev_dir = _dev_output_dir()
+        if dev_dir:
+            dev_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(final_path, dev_dir / filename)
 
         return {
             "video_id": video_id,
             "title": title,
             "format": format_type,
             "filename": filename,
-            "path": str(dest_path),
-            "downloaded_at": downloaded_at.isoformat(),
+            "path": final_path,
+            "mimetype": FORMAT_MIMETYPES[format_type],
+            "tmpdir": tmpdir,
         }
+    except Exception:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise
 
 
 def convert_url_to_mp3(url: str) -> dict[str, Any]:

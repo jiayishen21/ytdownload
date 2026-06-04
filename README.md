@@ -1,6 +1,6 @@
 # ytdownload
 
-A small Flask API that downloads YouTube videos as **MP3** or **MP4** files. Downloads are saved locally under `downloads/` with predictable filenames.
+A small Flask app that converts YouTube videos to **MP3** or **MP4** and sends the file straight to your browser (like typical YouTube-to-MP3 sites). Nothing is stored on the server after the download finishes.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ python run.py
 
 The API listens at **http://127.0.0.1:5000** with debug mode enabled.
 
-Open **http://127.0.0.1:5000/** in a browser for a simple UI (URL + MP3/MP4, then **Convert**). The page calls `POST /api/convert` and shows success or error text; it does not download the file in the browser — files are saved under `downloads/` on the server.
+Open **http://127.0.0.1:5000/** for a simple UI: paste a URL, pick MP3 or MP4, click **Download**. The browser saves the converted file when the server is done.
 
 Alternatively:
 
@@ -60,44 +60,27 @@ Download and convert a YouTube video.
 
 Form fields (`url`, `format`) are also accepted if you are not sending JSON.
 
-**Success response (200):**
+**Success response (200):** the converted file as an attachment (`Content-Disposition: attachment`). MIME type is `audio/mpeg` (MP3) or `video/mp4` (MP4).
 
-```json
-{
-  "ok": true,
-  "video_id": "dQw4w9WgXcQ",
-  "title": "Rick Astley - Never Gonna Give You Up ...",
-  "format": "mp4",
-  "filename": "Rick Astley - Never Gonna Give You Up ...-20260604_020457.mp4",
-  "path": "C:\\Users\\...\\ytdownload\\downloads\\..."
-}
-```
+**Error responses:** JSON body `{ "error": "..." }`
 
-**Error responses:**
+| Status | When                               |
+| ------ | ---------------------------------- |
+| `400`  | Missing `url`, or invalid `format` |
+| `500`  | Download/conversion failed         |
 
-| Status | When                                             |
-| ------ | ------------------------------------------------ |
-| `400`  | Missing `url`, or invalid `format`               |
-| `500`  | Download/conversion failed (see `error` message) |
+## Download filename
 
-## Output files
-
-Saved under **`downloads/`** (created automatically). This folder is gitignored.
-
-**Filename pattern:**
+The attachment name uses:
 
 ```
 {sanitized-title}-{timestamp}.{mp3|mp4}
 ```
 
-- **Title** — video title with characters unsafe on Windows removed (`<>:"/\|?*`)
-- **Timestamp** — when the download **started**, formatted as `YYYYMMDD_HHMMSS` (local time)
+- **Title** — video title with unsafe path characters removed
+- **Timestamp** — when conversion **started** (`YYYYMMDD_HHMMSS`, local server time)
 
-If a file with the same name already exists, the video ID is appended:
-
-```
-{title}-{timestamp}-{video_id}.mp3
-```
+If that name collides in the temp folder, the video ID is appended before the extension.
 
 ## Quality, resolution, and frame rate
 
@@ -128,6 +111,25 @@ No video is downloaded for MP3.
 
 To change this behavior in the future, the `format` string in yt-dlp would need to be updated (for example `bestvideo[height<=720]+bestaudio/best` for a 720p cap).
 
+## Where files go
+
+| How you run it | Where the file ends up |
+|----------------|------------------------|
+| **Web UI** (`http://127.0.0.1:5000/`) | Your **browser download** (e.g. Windows `Downloads` folder) — not `downloads/` in this repo |
+| **`python test.py`** | **`test_output/`** in the project (only while testing) |
+| **API / Docker (default)** | Streamed in the HTTP response; temp files deleted on the server |
+
+The repo **`downloads/`** folder is **not used** anymore. An old file there is from a previous version — you can delete that folder.
+
+Optional server-side copy while developing (e.g. duplicate of what `test.py` saves):
+
+```powershell
+$env:YTDOWNLOAD_DEV_OUTPUT_DIR = "test_output"
+python run.py
+```
+
+Do **not** set that in production.
+
 ## Testing
 
 With the server running, in another terminal:
@@ -136,17 +138,16 @@ With the server running, in another terminal:
 python test.py
 ```
 
-By default this converts the same URL as **both** MP3 and MP4.
+Saves responses under **`test_output/`** (both MP3 and MP4 by default).
 
 ```powershell
-# Custom URL
-python test.py "https://www.youtube.com/watch?v=VIDEO_ID"
-
-# Single format only
 python test.py "https://www.youtube.com/watch?v=VIDEO_ID" mp4
+python test.py --no-save "https://www.youtube.com/watch?v=VIDEO_ID"   # API only, no files
 ```
 
 Each format is tried in sequence; the script exits with code `1` if any request fails. Requests use a 10-minute timeout because downloads can take a while, especially MP4.
+
+Rebuild Docker after code changes: `docker compose up --build -d`.
 
 ## Project layout
 
@@ -158,9 +159,8 @@ ytdownload/
 │   ├── templates/
 │   │   └── index.html # Basic web UI
 │   └── youtube.py     # yt-dlp download logic
-├── downloads/         # Saved files (gitignored)
 ├── run.py             # Dev server entry point
-├── test.py            # Manual API test script
+├── test.py            # Manual API test (writes to test_output/)
 ├── requirements.txt
 ├── Dockerfile
 ├── docker-compose.yml
@@ -169,7 +169,6 @@ ytdownload/
 
 ## Things to know
 
-- **`FileExistsError: /app/downloads`** — not rate limiting. The download often finished; saving failed because `downloads` was a **file** instead of a folder (bad bind mount). Fix: ensure `./downloads` is an empty **directory** on the host (`mkdir downloads`), then `docker compose up --build -d`.
 - **FFmpeg is mandatory** for both formats. Without it you will get errors about post-processing or missing output files.
 - **MP4 is slower and larger** than MP3 because it downloads and merges full video.
 - **First request after server start** may feel slow while yt-dlp/FFmpeg warm up.
@@ -194,15 +193,13 @@ The app is not tied to Windows for deployment. The only Windows-specific code is
 docker compose up --build
 ```
 
-API: **http://localhost:5000**
-
-Downloads are written to `./downloads` on the host (mounted volume).
+API: **http://localhost:5000** — use the web UI or `POST /api/convert`; files stream to the client and temp data is deleted on the server.
 
 ### Without Compose
 
 ```bash
 docker build -t ytdownload .
-docker run --rm -p 5000:5000 -v "$(pwd)/downloads:/app/downloads" ytdownload
+docker run --rm -p 5000:5000 ytdownload
 ```
 
 ### How it works in the container
@@ -212,7 +209,6 @@ docker run --rm -p 5000:5000 -v "$(pwd)/downloads:/app/downloads" ytdownload
 | `python:3.12-slim-bookworm` | Linux base image |
 | `apt install ffmpeg` | FFmpeg + ffprobe on `PATH` |
 | `gunicorn` | Serves `run:app` on `0.0.0.0:5000` (not Flask’s dev server) |
-| Volume `./downloads:/app/downloads` | Persist converted files outside the container |
 
 Request timeout is **600 seconds** in gunicorn so long MP4 jobs can finish.
 

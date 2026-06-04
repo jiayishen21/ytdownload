@@ -2,6 +2,7 @@ import shutil
 
 from flask import Blueprint, after_this_request, jsonify, render_template, request, send_file
 
+from app.validators import InvalidYouTubeURLError, validate_youtube_url
 from app.youtube import VALID_FORMATS, ConversionError, convert_url
 
 bp = Blueprint("main", __name__)
@@ -25,6 +26,11 @@ def convert():
         return jsonify(
             {"error": f"format must be one of: {', '.join(sorted(VALID_FORMATS))}"}
         ), 400
+
+    try:
+        url = validate_youtube_url(url)
+    except InvalidYouTubeURLError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     try:
         result = convert_url(url, fmt)

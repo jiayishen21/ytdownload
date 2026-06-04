@@ -10,6 +10,8 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import yt_dlp
 
+from app.validators import validate_youtube_url
+
 Format = Literal["mp3", "mp4"]
 VALID_FORMATS: frozenset[str] = frozenset({"mp3", "mp4"})
 FORMAT_MIMETYPES: dict[str, str] = {
@@ -169,7 +171,7 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
             "or set FFMPEG_LOCATION to the directory containing the ffmpeg binary."
         )
 
-    clean_url = _normalize_url(url)
+    clean_url = _normalize_url(validate_youtube_url(url))
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     tmpdir = tempfile.mkdtemp()
 

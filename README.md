@@ -66,7 +66,7 @@ Form fields (`url`, `format`) are also accepted if you are not sending JSON.
 
 | Status | When                               |
 | ------ | ---------------------------------- |
-| `400`  | Missing `url`, or invalid `format` |
+| `400`  | Missing `url`, invalid `format`, or non-YouTube URL |
 | `500`  | Download/conversion failed         |
 
 ## Download filename

@@ -113,8 +113,23 @@ def _ydl_opts(ffmpeg_dir: str, tmpdir: str, fmt: Format) -> dict[str, Any]:
             }
         ]
     else:
-        opts["format"] = "bestvideo+bestaudio/best"
+        # Prefer H.264 + AAC in an MP4 container (plays in Windows Media Player, etc.).
+        # Plain bestvideo+bestaudio often muxes Opus audio, which many players reject.
+        opts["format"] = (
+            "bestvideo[ext=mp4]+bestaudio[ext=m4a]/"
+            "bestvideo+bestaudio/best"
+        )
         opts["merge_output_format"] = "mp4"
+        opts["format_sort"] = ["vcodec:h264", "res", "fps", "acodec:aac"]
+        opts["postprocessors"] = [
+            {
+                "key": "FFmpegVideoConvertor",
+                "preferedformat": "mp4",
+            }
+        ]
+        opts["postprocessor_args"] = {
+            "VideoConvertor": ["-c:v", "copy", "-c:a", "aac", "-movflags", "+faststart"],
+        }
 
     return opts
 

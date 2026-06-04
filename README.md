@@ -100,16 +100,18 @@ No video is downloaded for MP3.
 
 ### MP4 (`format: "mp4"`)
 
-| Setting          | Value                        | Effect                                             |
-| ---------------- | ---------------------------- | -------------------------------------------------- |
-| Stream selection | `bestvideo+bestaudio/best`   | Best separate video and audio streams, then merged |
-| Container        | `merge_output_format: "mp4"` | Output file is MP4                                 |
+| Setting          | Value | Effect |
+| ---------------- | ----- | ------ |
+| Stream selection | `bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best` | Prefer MP4 video + M4A (AAC) when available |
+| Sorting | `vcodec:h264`, `acodec:aac` | Prefer codecs most players support |
+| Post-process | `FFmpegVideoConvertor` + `-c:a aac` | MP4 with **AAC** audio (avoids Opus-in-MP4, which breaks many players) |
+| Container | `merge_output_format: "mp4"` | Output file is MP4 |
 
 **Playlist URLs** (`?list=...` on YouTube links) download **only the single video** — not the whole playlist. Without that, yt-dlp can try to fetch many videos and peg CPU/disk for a long time.
 
-**Resolution and frame rate** come from whatever YouTube exposes as the “best” video stream — often 1080p or 4K when available. We do **not** cap resolution (e.g. 720p), force 30 FPS, or pick a specific codec (H.264, VP9, AV1, etc.). File size and download time can be large for high-resolution uploads.
+**Resolution and frame rate** still follow the best stream after those codec preferences. MP4 can take longer when FFmpeg must transcode Opus audio to AAC.
 
-To change this behavior in the future, the `format` string in yt-dlp would need to be updated (for example `bestvideo[height<=720]+bestaudio/best` for a 720p cap).
+To cap resolution later, change the `format` string in `app/youtube.py` (for example `bestvideo[height<=720]+...`).
 
 ## Where files go
 

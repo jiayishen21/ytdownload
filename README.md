@@ -42,10 +42,10 @@ Download and convert a YouTube video.
 
 **JSON body:**
 
-| Field    | Required | Default | Description                          |
-|----------|----------|---------|--------------------------------------|
-| `url`    | Yes      | —       | Full YouTube watch URL               |
-| `format` | No       | `mp3`   | `mp3` or `mp4`                       |
+| Field    | Required | Default | Description            |
+| -------- | -------- | ------- | ---------------------- |
+| `url`    | Yes      | —       | Full YouTube watch URL |
+| `format` | No       | `mp3`   | `mp3` or `mp4`         |
 
 **Example request:**
 
@@ -73,9 +73,9 @@ Form fields (`url`, `format`) are also accepted if you are not sending JSON.
 
 **Error responses:**
 
-| Status | When |
-|--------|------|
-| `400`  | Missing `url`, or invalid `format` |
+| Status | When                                             |
+| ------ | ------------------------------------------------ |
+| `400`  | Missing `url`, or invalid `format`               |
 | `500`  | Download/conversion failed (see `error` message) |
 
 ## Output files
@@ -105,20 +105,20 @@ Choices are made by [yt-dlp](https://github.com/yt-dlp/yt-dlp) using the format 
 
 ### MP3 (`format: "mp3"`)
 
-| Setting | Value | Effect |
-|---------|-------|--------|
-| Stream selection | `bestaudio/best` | Highest-quality audio YouTube offers for that video |
-| Post-process | `FFmpegExtractAudio` → MP3 | Converts to MP3 |
-| Audio bitrate | `preferredquality: "192"` | **192 kbps** MP3 (the only quality value we pin explicitly) |
+| Setting          | Value                      | Effect                                                      |
+| ---------------- | -------------------------- | ----------------------------------------------------------- |
+| Stream selection | `bestaudio/best`           | Highest-quality audio YouTube offers for that video         |
+| Post-process     | `FFmpegExtractAudio` → MP3 | Converts to MP3                                             |
+| Audio bitrate    | `preferredquality: "192"`  | **192 kbps** MP3 (the only quality value we pin explicitly) |
 
 No video is downloaded for MP3.
 
 ### MP4 (`format: "mp4"`)
 
-| Setting | Value | Effect |
-|---------|-------|--------|
-| Stream selection | `bestvideo+bestaudio/best` | Best separate video and audio streams, then merged |
-| Container | `merge_output_format: "mp4"` | Output file is MP4 |
+| Setting          | Value                        | Effect                                             |
+| ---------------- | ---------------------------- | -------------------------------------------------- |
+| Stream selection | `bestvideo+bestaudio/best`   | Best separate video and audio streams, then merged |
+| Container        | `merge_output_format: "mp4"` | Output file is MP4                                 |
 
 **Resolution and frame rate** come from whatever YouTube exposes as the “best” video stream — often 1080p or 4K when available. We do **not** cap resolution (e.g. 720p), force 30 FPS, or pick a specific codec (H.264, VP9, AV1, etc.). File size and download time can be large for high-resolution uploads.
 

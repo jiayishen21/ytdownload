@@ -1,8 +1,13 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, render_template, request
 
 from app.youtube import VALID_FORMATS, ConversionError, convert_url
 
 bp = Blueprint("main", __name__)
+
+
+@bp.route("/")
+def index():
+    return render_template("index.html")
 
 
 @bp.route("/api/convert", methods=["POST"])

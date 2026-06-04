@@ -6,6 +6,7 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import yt_dlp
 
@@ -26,6 +27,34 @@ def _sanitize_filename(title: str) -> str:
     sanitized = re.sub(r'[<>:"/\\|?*]', "", title)
     sanitized = re.sub(r"\s+", " ", sanitized).strip()
     return sanitized[:200] or "untitled"
+
+
+def _ensure_downloads_dir() -> None:
+    path = DOWNLOADS_DIR
+    if path.exists():
+        if path.is_dir():
+            return
+        raise ConversionError(
+            f"{path} exists but is not a directory. "
+            "Delete that file or fix the Docker volume mount, then try again."
+        )
+    path.mkdir(parents=True, exist_ok=True)
+
+
+def _normalize_url(url: str) -> str:
+    """Use a single video URL; drop playlist/radio query params."""
+    url = url.strip()
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return url
+
+    query = parse_qs(parsed.query, keep_blank_values=True)
+    query.pop("list", None)
+    query.pop("index", None)
+    query.pop("start_radio", None)
+
+    flat_query = urlencode({key: values[0] for key, values in query.items()})
+    return urlunparse(parsed._replace(query=flat_query))
 
 
 def _ffmpeg_binary_name() -> str:
@@ -70,6 +99,7 @@ def _ydl_opts(ffmpeg_dir: str, tmpdir: str, fmt: Format) -> dict[str, Any]:
     opts: dict[str, Any] = {
         "outtmpl": outtmpl,
         "ffmpeg_location": ffmpeg_dir,
+        "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
     }
@@ -102,6 +132,16 @@ def _find_output_file(tmpdir: str, video_id: str, ext: str) -> str | None:
     return None
 
 
+def _video_info(info: dict[str, Any] | None) -> dict[str, Any]:
+    if not info:
+        raise ConversionError("Could not fetch video info")
+    if info.get("_type") == "playlist" and info.get("entries"):
+        first = info["entries"][0]
+        if isinstance(first, dict):
+            return first
+    return info
+
+
 def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
     """Download from a YouTube URL and save as MP3 or MP4 under downloads/."""
     format_type = fmt.lower()
@@ -115,6 +155,7 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
             "or set FFMPEG_LOCATION to the directory containing the ffmpeg binary."
         )
 
+    clean_url = _normalize_url(url)
     downloaded_at = datetime.now()
     timestamp = downloaded_at.strftime("%Y%m%d_%H%M%S")
 
@@ -123,13 +164,11 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
 
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+                raw_info = ydl.extract_info(clean_url, download=True)
         except Exception as exc:
             raise ConversionError(_strip_ansi(str(exc))) from exc
 
-        if not info:
-            raise ConversionError("Could not fetch video info")
-
+        info = _video_info(raw_info)
         video_id = info.get("id", "unknown")
         title = info.get("title", "")
 
@@ -139,7 +178,7 @@ def convert_url(url: str, fmt: str = "mp3") -> dict[str, Any]:
                 f"{format_type.upper()} file was not created. ffmpeg dir: {ffmpeg_dir}"
             )
 
-        DOWNLOADS_DIR.mkdir(parents=True, exist_ok=True)
+        _ensure_downloads_dir()
         filename = f"{_sanitize_filename(title)}-{timestamp}.{format_type}"
         dest_path = DOWNLOADS_DIR / filename
 

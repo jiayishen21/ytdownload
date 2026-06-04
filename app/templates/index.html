@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ytdownload</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 32rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+        color: #111;
+      }
+      h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+      label { display: block; font-weight: 600; margin-bottom: 0.35rem; }
+      input[type="url"] {
+        width: 100%;
+        padding: 0.5rem 0.6rem;
+        margin-bottom: 1rem;
+        border: 1px solid #ccc;
+        border-radius: 4px;
+      }
+      fieldset {
+        border: none;
+        padding: 0;
+        margin: 0 0 1rem;
+      }
+      fieldset label { font-weight: normal; display: inline; margin-right: 1rem; }
+      button {
+        padding: 0.5rem 1rem;
+        background: #111;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      #status {
+        margin-top: 1.25rem;
+        padding: 0.75rem;
+        border-radius: 4px;
+        display: none;
+      }
+      #status.visible { display: block; }
+      #status.ok { background: #e8f5e9; border: 1px solid #a5d6a7; }
+      #status.err { background: #ffebee; border: 1px solid #ef9a9a; }
+      #status.pending { background: #f5f5f5; border: 1px solid #ddd; }
+    </style>
+  </head>
+  <body>
+    <h1>ytdownload</h1>
+    <form id="form">
+      <label for="url">YouTube URL</label>
+      <input
+        type="url"
+        id="url"
+        name="url"
+        placeholder="https://www.youtube.com/watch?v=..."
+        required
+      />
+
+      <fieldset>
+        <legend style="font-weight: 600; margin-bottom: 0.35rem">Format</legend>
+        <label><input type="radio" name="format" value="mp3" checked /> MP3</label>
+        <label><input type="radio" name="format" value="mp4" /> MP4</label>
+      </fieldset>
+
+      <button type="submit" id="submit">Convert</button>
+    </form>
+
+    <div id="status" role="status"></div>
+
+    <script>
+      const form = document.getElementById("form");
+      const status = document.getElementById("status");
+      const submit = document.getElementById("submit");
+
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const url = document.getElementById("url").value.trim();
+        const format = form.format.value;
+
+        status.className = "visible pending";
+        status.textContent = "Converting one video only (playlist links are ignored). MP4 can take several minutes.";
+        submit.disabled = true;
+
+        try {
+          const res = await fetch("/api/convert", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url, format }),
+          });
+          const data = await res.json();
+
+          if (!res.ok) {
+            status.className = "visible err";
+            status.textContent = data.error || "Request failed";
+            return;
+          }
+
+          status.className = "visible ok";
+          status.textContent =
+            "Saved: " + data.filename + " (" + data.title + ")";
+        } catch (err) {
+          status.className = "visible err";
+          status.textContent = "Network error: " + err.message;
+        } finally {
+          submit.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

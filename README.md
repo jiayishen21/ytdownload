@@ -26,6 +26,8 @@ python run.py
 
 The API listens at **http://127.0.0.1:5000** with debug mode enabled.
 
+Open **http://127.0.0.1:5000/** in a browser for a simple UI (URL + MP3/MP4, then **Convert**). The page calls `POST /api/convert` and shows success or error text; it does not download the file in the browser — files are saved under `downloads/` on the server.
+
 Alternatively:
 
 ```powershell
@@ -120,6 +122,8 @@ No video is downloaded for MP3.
 | Stream selection | `bestvideo+bestaudio/best`   | Best separate video and audio streams, then merged |
 | Container        | `merge_output_format: "mp4"` | Output file is MP4                                 |
 
+**Playlist URLs** (`?list=...` on YouTube links) download **only the single video** — not the whole playlist. Without that, yt-dlp can try to fetch many videos and peg CPU/disk for a long time.
+
 **Resolution and frame rate** come from whatever YouTube exposes as the “best” video stream — often 1080p or 4K when available. We do **not** cap resolution (e.g. 720p), force 30 FPS, or pick a specific codec (H.264, VP9, AV1, etc.). File size and download time can be large for high-resolution uploads.
 
 To change this behavior in the future, the `format` string in yt-dlp would need to be updated (for example `bestvideo[height<=720]+bestaudio/best` for a 720p cap).
@@ -150,7 +154,9 @@ Each format is tried in sequence; the script exits with code `1` if any request 
 ytdownload/
 ├── app/
 │   ├── __init__.py    # Flask app factory
-│   ├── routes.py      # /api/convert
+│   ├── routes.py      # / and /api/convert
+│   ├── templates/
+│   │   └── index.html # Basic web UI
 │   └── youtube.py     # yt-dlp download logic
 ├── downloads/         # Saved files (gitignored)
 ├── run.py             # Dev server entry point
@@ -163,6 +169,7 @@ ytdownload/
 
 ## Things to know
 
+- **`FileExistsError: /app/downloads`** — not rate limiting. The download often finished; saving failed because `downloads` was a **file** instead of a folder (bad bind mount). Fix: ensure `./downloads` is an empty **directory** on the host (`mkdir downloads`), then `docker compose up --build -d`.
 - **FFmpeg is mandatory** for both formats. Without it you will get errors about post-processing or missing output files.
 - **MP4 is slower and larger** than MP3 because it downloads and merges full video.
 - **First request after server start** may feel slow while yt-dlp/FFmpeg warm up.
